@@ -4,8 +4,6 @@ import erc20 from './IERC20.json';
 import Web3 from 'web3';
 import { toBN, fromWei } from 'web3-utils';
 
-const SCAN_SIZE = 3000;
-
 let accounts = {};
 
 const statuses = {
@@ -24,7 +22,9 @@ function App() {
   const [calculatedSupply, setCalculatedSupply] = useState('0');
   const [calcSupplyLessBurn, setCalculatedSupplyLessBurn] = useState('0');
   const [numAccounts, setNumAccounts] = useState(0);
+  const [blockScanSize, setBlockScanSize] = useState(3000);
   const [block, setBlock] = useState(0);
+  let [transfers, setTransfers] = useState(0);
   const [status, setStatus] = useState('pending');
 
   const scan = async () => {
@@ -65,15 +65,16 @@ function App() {
     let currentBlock = await web3.eth.getBlockNumber();
 
     const _startBlock = parseInt(startBlock);
-    for (let fromBlock = _startBlock; fromBlock < currentBlock + SCAN_SIZE; fromBlock += SCAN_SIZE) {
+    for (let fromBlock = _startBlock; fromBlock < currentBlock + blockScanSize; fromBlock += blockScanSize) {
       setBlock(fromBlock);
       const events = await token.getPastEvents(['Mint', 'Burn'], {
-        fromBlock, toBlock: fromBlock + SCAN_SIZE - 1,
+        fromBlock, toBlock: fromBlock + blockScanSize - 1,
       });
 
       for (const event of events) {
         try {
           if (event.event === 'Transfer' && event.returnValues.from === '0x0000000000000000000000000000000000000000') {
+            setTransfers(++transfers);
             _calculatedSupply = web3.utils.toBN(_calculatedSupply).add(web3.utils.toBN(event.returnValues.value)).toString();
             setCalculatedSupply(_calculatedSupply);
 
@@ -84,6 +85,7 @@ function App() {
               adjustAccount(event.returnValues.to, event.returnValues.value, 'in');
             }
           } else if (event.event === 'Transfer') {
+            setTransfers(++transfers);
             adjustAccount(event.returnValues.from, event.returnValues.value, 'out');
             adjustAccount(event.returnValues.to, event.returnValues.value, 'in');
 
@@ -93,6 +95,7 @@ function App() {
             }
           }
         } catch (e) {
+          console.log(e);
           console.log('fraud', event, accounts[event.returnValues.to].toString(), accounts[event.returnValues.from].toString());
           setRunning(false);
           setStatus('fraud');
@@ -134,6 +137,11 @@ function App() {
           <input type="number" value={startBlock} onChange={e => setStartBlock(e.target.value)} disabled={running} />
         </div>
 
+        <div>
+          Block scan range (higher=faster)
+          <input type="number" value={blockScanSize} onChange={e => setBlockScanSize(parseInt(e.target.value))} disabled={running} />
+        </div>
+
         <button disabled={running || !provider} onClick={scan}>Scan</button>
         <div>{statuses[status]}</div>
 
@@ -142,6 +150,7 @@ function App() {
         <div>Calculated supply (excluding burns): {fromWei(calcSupplyLessBurn, 'ether')}</div>
         <div>Number of accounts: {numAccounts}</div>
         <div>Block: {block}</div>
+        <div>Transfers: {transfers}</div>
       </header>
     </div>
   );
